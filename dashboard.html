@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>困りごとダッシュボード</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    /* ── リセット & ベース ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', Arial, sans-serif;
+      background: #f5f7fa;
+      color: #333;
+      min-height: 100vh;
+    }
+
+    /* ── ヘッダー ── */
+    .header {
+      background: #fff;
+      border-bottom: 2px solid #e8f0fe;
+      padding: 20px 32px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-title h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a73e8;
+      letter-spacing: -0.3px;
+    }
+
+    .header-title span.icon { font-size: 24px; }
+
+    .header-meta {
+      font-size: 12px;
+      color: #888;
+    }
+
+    /* ── 期間ボタン ── */
+    .period-buttons {
+      display: flex;
+      gap: 8px;
+      background: #f1f3f4;
+      border-radius: 10px;
+      padding: 4px;
+    }
+
+    .period-btn {
+      padding: 8px 22px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .18s ease;
+      background: transparent;
+      color: #666;
+      letter-spacing: 0.2px;
+    }
+
+    .period-btn:hover {
+      background: #e0e0e0;
+      color: #333;
+    }
+
+    .period-btn.active {
+      background: #1a73e8;
+      color: #fff;
+      box-shadow: 0 2px 6px rgba(26,115,232,.35);
+    }
+
+    /* ── メインコンテンツ ── */
+    .main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 24px 48px;
+    }
+
+    /* ── サマリーカード ── */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    @media (max-width: 640px) {
+      .summary-grid { grid-template-columns: 1fr; }
+    }
+
+    .summary-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 20px 22px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+      border-top: 4px solid transparent;
+      transition: box-shadow .15s;
+    }
+
+    .summary-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+    .summary-card:nth-child(1) { border-top-color: #1a73e8; }
+    .summary-card:nth-child(2) { border-top-color: #34a853; }
+    .summary-card:nth-child(3) { border-top-color: #fbbc04; }
+
+    .summary-label {
+      font-size: 12px;
+      color: #888;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .summary-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #222;
+      line-height: 1.1;
+      word-break: break-all;
+    }
+
+    .summary-sub {
+      font-size: 13px;
+      color: #999;
+      margin-top: 4px;
+    }
+
+    /* ── セクション ── */
+    .section {
+      background: #fff;
+      border-radius: 14px;
+      padding: 24px 26px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #222;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title .badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: #e8f0fe;
+      color: #1a73e8;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-left: 4px;
+    }
+
+    /* ── グラフコンテナ ── */
+    .chart-container {
+      position: relative;
+      height: 320px;
+    }
+
+    /* ── ランキングテーブル ── */
+    .ranking-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .ranking-table thead tr {
+      background: #f8f9fa;
+    }
+
+    .ranking-table th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 700;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      border-bottom: 2px solid #e9ecef;
+    }
+
+    .ranking-table td {
+      padding: 11px 14px;
+      border-bottom: 1px solid #f0f0f0;
+      vertical-align: middle;
+    }
+
+    .ranking-table tr:last-child td { border-bottom: none; }
+
+    .ranking-table tbody tr:hover { background: #f8fbff; }
+
+    .rank-num {
+      font-weight: 700;
+      font-size: 15px;
+      color: #bbb;
+      text-align: center;
+      width: 46px;
+    }
+
+    .rank-num.gold   { color: #f5a623; font-size: 18px; }
+    .rank-num.silver { color: #adb5bd; font-size: 18px; }
+    .rank-num.bronze { color: #c09060; font-size: 18px; }
+
+    .rank-keyword {
+      font-weight: 600;
+      color: #222;
+    }
+
+    .rank-count {
+      font-weight: 700;
+      color: #1a73e8;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .rank-bar-cell { width: 180px; }
+
+    .rank-bar-bg {
+      background: #e8f0fe;
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .rank-bar-fill {
+      background: linear-gradient(90deg, #1a73e8, #4a90f3);
+      height: 100%;
+      border-radius: 4px;
+      transition: width .4s ease;
+    }
+
+    /* ── 急上昇セクション ── */
+    .rising-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .rising-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: linear-gradient(135deg, #fff8f0, #fff3e0);
+      border: 1px solid #ffcc80;
+      border-radius: 10px;
+      padding: 13px 18px;
+      transition: box-shadow .15s;
+    }
+
+    .rising-item:hover { box-shadow: 0 3px 10px rgba(230,101,0,.12); }
+
+    .rising-icon { font-size: 20px; flex-shrink: 0; }
+
+    .rising-keyword {
+      flex: 1;
+      font-weight: 700;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .rising-pct {
+      font-size: 15px;
+      font-weight: 800;
+      color: #e65100;
+      white-space: nowrap;
+    }
+
+    .rising-detail {
+      font-size: 12px;
+      color: #888;
+      white-space: nowrap;
+    }
+
+    /* ── 空状態 ── */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #aaa;
+    }
+
+    .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; line-height: 1.7; }
+
+    /* ── ローディング ── */
+    .loading-overlay {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      padding: 60px 20px;
+      color: #888;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #e0e0e0;
+      border-top-color: #1a73e8;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── エラー ── */
+    .error-banner {
+      background: #fce8e6;
+      color: #c5221f;
+      border: 1px solid #f5c6c4;
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    /* ── フッター ── */
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #bbb;
+      margin-top: 40px;
+      padding-bottom: 20px;
+    }
+
+    /* ── タブ切り替えアニメーション ── */
+    .fade-in { animation: fadeIn .25s ease; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+
+<body>
+
+<!-- ヘッダー -->
+<header class="header">
+  <div class="header-title">
+    <span class="icon">🔍</span>
+    <h1>困りごとダッシュボード</h1>
+  </div>
+
+  <!-- 期間切替ボタン（3つのみ） -->
+  <div class="period-buttons" role="group" aria-label="期間選択">
+    <button class="period-btn active" data-period="today" onclick="loadData('today')">本日</button>
+    <button class="period-btn"        data-period="week"  onclick="loadData('week')">今週</button>
+    <button class="period-btn"        data-period="month" onclick="loadData('month')">今月</button>
+  </div>
+
+  <div class="header-meta" id="last-updated">読み込み中…</div>
+</header>
+
+<!-- メインコンテンツ -->
+<main class="main">
+
+  <!-- エラーバナー（必要時に表示） -->
+  <div class="error-banner" id="error-banner" style="display:none;"></div>
+
+  <!-- ローディング -->
+  <div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <span>データを読み込んでいます…</span>
+  </div>
+
+  <!-- コンテンツ（ロード後に表示） -->
+  <div id="content" style="display:none;">
+
+    <!-- サマリーカード -->
+    <div class="summary-grid fade-in">
+      <div class="summary-card">
+        <div class="summary-label">📊 総件数</div>
+        <div class="summary-value" id="sum-total">—</div>
+        <div class="summary-sub">キーワード件数の合計</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">🏷 カテゴリ数</div>
+        <div class="summary-value" id="sum-category">—</div>
+        <div class="summary-sub">ユニークキーワード数</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">🥇 1位キーワード</div>
+        <div class="summary-value" id="sum-top" style="font-size:18px;">—</div>
+        <div class="summary-sub">最も多く出現した困りごと</div>
+      </div>
+    </div>
+
+    <!-- グラフ -->
+    <div class="section fade-in">
+      <div class="section-title">
+        🏆 困りごとランキング
+        <span class="badge" id="period-badge">本日</span>
+        TOP 10
+      </div>
+      <div class="chart-container">
+        <canvas id="rankingChart"></canvas>
+      </div>
+    </div>
+
+    <!-- テーブル -->
+    <div class="section fade-in">
+      <div class="section-title">📋 詳細テーブル</div>
+      <div id="ranking-table-container"></div>
+    </div>
+
+    <!-- 急上昇 -->
+    <div class="section fade-in">
+      <div class="section-title">
+        ⬆ 急上昇キーワード
+        <span class="badge" style="background:#fff3e0;color:#e65100;">先週比 +50%以上</span>
+      </div>
+      <div class="rising-grid" id="rising-container"></div>
+    </div>
+
+  </div><!-- /#content -->
+
+  <div class="footer">
+    Chatwork 困りごとダッシュボード — 自動取得: 毎日3:00 / レポート: 毎日8:00
+  </div>
+
+</main>
+
+<script>
+// =====================================================
+// グローバル変数
+// =====================================================
+let currentPeriod = 'today';
+let chartInstance = null;
+
+// =====================================================
+// 初期化
+// =====================================================
+document.addEventListener('DOMContentLoaded', () => {
+  loadData('today');
+});
+
+// =====================================================
+// データ読み込み（GASバックエンドを呼び出し）
+// =====================================================
+function loadData(period) {
+  currentPeriod = period;
+  updatePeriodButtons(period);
+  showLoading(true);
+  hideError();
+
+  // google.script.run で GAS 関数を呼び出す
+  google.script.run
+    .withSuccessHandler(onDataLoaded)
+    .withFailureHandler(onDataError)
+    .getDashboardData(period);
+}
+
+function onDataLoaded(jsonStr) {
+  showLoading(false);
+
+  let data;
+  try {
+    data = JSON.parse(jsonStr);
+  } catch (e) {
+    showError('データの解析に失敗しました: ' + e.message);
+    return;
+  }
+
+  if (!data.success) {
+    showError('データの取得に失敗しました: ' + (data.error || '不明なエラー'));
+    return;
+  }
+
+  renderDashboard(data);
+  document.getElementById('content').style.display = 'block';
+
+  // 最終更新時刻
+  const now = new Date();
+  document.getElementById('last-updated').textContent =
+    '最終更新: ' + now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+}
+
+function onDataError(err) {
+  showLoading(false);
+  showError('通信エラーが発生しました: ' + err.message);
+}
+
+// =====================================================
+// ダッシュボード描画
+// =====================================================
+function renderDashboard(data) {
+  const { ranking, rising, summary, period } = data;
+  const labels = { today: '本日', week: '今週', month: '今月' };
+
+  // バッジ更新
+  document.getElementById('period-badge').textContent = labels[period] || period;
+
+  // サマリーカード
+  document.getElementById('sum-total').textContent    = (summary.totalCount || 0).toLocaleString() + ' 件';
+  document.getElementById('sum-category').textContent = (summary.categoryCount || 0) + ' 種類';
+  document.getElementById('sum-top').textContent      = summary.topKeyword || 'データなし';
+
+  // グラフ
+  renderChart(ranking);
+
+  // テーブル
+  renderTable(ranking);
+
+  // 急上昇
+  renderRising(rising);
+}
+
+// ── 横棒グラフ ──────────────────────────────────────
+function renderChart(ranking) {
+  const ctx = document.getElementById('rankingChart').getContext('2d');
+
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+
+  if (!ranking || ranking.length === 0) {
+    // 空状態
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    return;
+  }
+
+  // TOP10（表示順を逆にして上位が上に来るようにする）
+  const items    = [...ranking].reverse();
+  const labels   = items.map(i => i.keyword);
+  const counts   = items.map(i => i.count);
+  const maxCount = Math.max(...counts, 1);
+
+  // 色グラデーション（順位によって変化）
+  const colors = items.map((_, idx) => {
+    const rank = items.length - 1 - idx; // 0=1位
+    const alpha = 0.55 + (rank / items.length) * 0.45;
+    return `rgba(26, 115, 232, ${alpha})`;
+  });
+
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: colors,
+        borderColor: 'rgba(26,115,232,0.8)',
+        borderWidth: 1,
+        borderRadius: 5,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y',           // 横棒
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' ' + ctx.raw + ' 件'
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          max: Math.ceil(maxCount * 1.15),
+          grid: { color: 'rgba(0,0,0,.05)' },
+          ticks: {
+            font: { size: 12 },
+            color: '#888',
+            callback: v => Number.isInteger(v) ? v + '件' : null
+          }
+        },
+        y: {
+          grid: { display: false },
+          ticks: {
+            font: { size: 13, weight: '600' },
+            color: '#333',
+            maxTicksLimit: 10,
+          }
+        }
+      },
+      animation: { duration: 400, easing: 'easeOutQuart' }
+    }
+  });
+}
+
+// ── ランキングテーブル ────────────────────────────────
+function renderTable(ranking) {
+  const container = document.getElementById('ranking-table-container');
+
+  if (!ranking || ranking.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <p>この期間のデータがありません。<br>毎日3:00に自動取得が行われます。<br>初日はデータが蓄積されるまでお待ちください。</p>
+      </div>`;
+    return;
+  }
+
+  const maxCount = ranking[0].count;
+  const medals   = ['🥇', '🥈', '🥉'];
+  const rankClasses = ['gold', 'silver', 'bronze'];
+
+  const rows = ranking.map((item, i) => {
+    const barPct  = Math.round((item.count / maxCount) * 100);
+    const rankNum = medals[i]
+      ? `<span class="rank-num ${rankClasses[i]}">${medals[i]}</span>`
+      : `<span class="rank-num">${i + 1}</span>`;
+
+    return `
+      <tr>
+        <td>${rankNum}</td>
+        <td class="rank-keyword">${escHtml(item.keyword)}</td>
+        <td class="rank-count">${item.count} 件</td>
+        <td class="rank-bar-cell">
+          <div class="rank-bar-bg">
+            <div class="rank-bar-fill" style="width:${barPct}%"></div>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="ranking-table">
+      <thead>
+        <tr>
+          <th style="width:46px">順位</th>
+          <th>キーワード</th>
+          <th style="width:80px;text-align:right">件数</th>
+          <th style="width:180px">バー</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── 急上昇キーワード ──────────────────────────────────
+function renderRising(rising) {
+  const container = document.getElementById('rising-container');
+
+  if (!rising || rising.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📊</div>
+        <p>急上昇キーワードはありません。<br>先週比 +50% 以上のキーワードが現れるとここに表示されます。</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = rising.map(item => {
+    const isNew  = item.lastCount === 0;
+    const icon   = isNew ? '🆕' : '⬆';
+    const pct    = (isNew ? '' : '+') + item.increase + '%';
+    const detail = isNew
+      ? `新規出現（今週: ${item.thisCount}件）`
+      : `今週: ${item.thisCount}件 ／ 先週: ${item.lastCount}件`;
+
+    return `
+      <div class="rising-item">
+        <span class="rising-icon">${icon}</span>
+        <span class="rising-keyword">${escHtml(item.keyword)}</span>
+        <span class="rising-pct">${pct}</span>
+        <span class="rising-detail">${detail}</span>
+      </div>`;
+  }).join('');
+}
+
+// =====================================================
+// UI ユーティリティ
+// =====================================================
+function updatePeriodButtons(period) {
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.period === period);
+  });
+}
+
+function showLoading(show) {
+  document.getElementById('loading').style.display = show ? 'flex' : 'none';
+  if (show) document.getElementById('content').style.display = 'none';
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+
+function hideError() {
+  document.getElementById('error-banner').style.display = 'none';
+}
+
+// XSS対策
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.appendChild(document.createTextNode(String(str)));
+  return d.innerHTML;
+}
+</script>
+
+</body>
+</html>
