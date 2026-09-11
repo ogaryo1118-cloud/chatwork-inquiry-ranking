@@ -87,22 +87,22 @@ def get_withholding_tax(salary_after_social_insurance: float) -> int:
         return int(row.iloc[0]["tax_0nin"])
 
     if s < 790_000:
-        return round(71_680 + (s - 740_000) * 0.2042)
+        return int(Decimal(str(71_680 + (s - 740_000) * 0.2042)).to_integral_value(rounding=ROUND_FLOOR))
     if s < 960_000:
-        return round(81_890 + (s - 790_000) * 0.23483)
+        return int(Decimal(str(81_890 + (s - 790_000) * 0.23483)).to_integral_value(rounding=ROUND_FLOOR))
     if s < 1_710_000:
-        return round(121_820 + (s - 960_000) * 0.33693)
+        return int(Decimal(str(121_820 + (s - 960_000) * 0.33693)).to_integral_value(rounding=ROUND_FLOOR))
     if s < 2_130_000:
-        return round(374_520 + (s - 1_710_000) * 0.4084)
+        return int(Decimal(str(374_520 + (s - 1_710_000) * 0.4084)).to_integral_value(rounding=ROUND_FLOOR))
     if s < 2_170_000:
-        return round(549_440 + (s - 2_130_000) * 0.4084)
+        return int(Decimal(str(549_440 + (s - 2_130_000) * 0.4084)).to_integral_value(rounding=ROUND_FLOOR))
     if s < 2_210_000:
-        return round(571_220 + (s - 2_170_000) * 0.4084)
+        return int(Decimal(str(571_220 + (s - 2_170_000) * 0.4084)).to_integral_value(rounding=ROUND_FLOOR))
     if s < 2_250_000:
-        return round(593_000 + (s - 2_210_000) * 0.4084)
+        return int(Decimal(str(593_000 + (s - 2_210_000) * 0.4084)).to_integral_value(rounding=ROUND_FLOOR))
     if s < 3_500_000:
-        return round(614_770 + (s - 2_250_000) * 0.4084)
-    return round(1_125_270 + (s - 3_500_000) * 0.45945)
+        return int(Decimal(str(614_770 + (s - 2_250_000) * 0.4084)).to_integral_value(rounding=ROUND_FLOOR))
+    return int(Decimal(str(1_125_270 + (s - 3_500_000) * 0.45945)).to_integral_value(rounding=ROUND_FLOOR))
 
 
 def simulate(salary: float, age: int) -> dict:
