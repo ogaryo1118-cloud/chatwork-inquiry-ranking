@@ -2,5 +2,5 @@ item,rate,burden,note
 health_insurance,0.0985,total,健康保険料率(介護保険非該当)
 health_insurance_with_kaigo,0.1147,total,健康保険料率+介護保険料率(40〜64歳)
 kosei_nenkin,0.183,total,厚生年金保険料率
-kodomo_kosodate_shienkin,0.0023,company_only,子ども・子育て支援金率(会社負担のみ)
+kodomo_kosodate_shienkin,0.0023,split,子ども・子育て支援金率（被保険者・事業主が原則折半）
 kodomo_kosodate_kyoshutsukin,0.0036,company_only,子ども・子育て拠出金率(会社負担のみ、厚生年金該当者のみ)
