@@ -1,41 +1,62 @@
-"""Google Sheets版との基準一致確認。"""
+"""主要ケースの回帰テスト。"""
+
 from calc import simulate
 
-EXPECTED = {
+EXPECTED_39 = {
     80_000: {
-        "標準報酬月額": 78_000,
-        "健康保険(本人)": 3_842,
-        "厚生年金(本人)": 0,
+        "健康保険 標準報酬月額": 78_000,
+        "厚生年金 標準報酬月額": 88_000,
+        "健康保険(本人)": 3_841,
+        "厚生年金(本人)": 8_052,
+        "子ども・子育て支援金(本人)": 90,
         "源泉所得税": 0,
-        "手取り概算": 76_158,
-        "会社負担合計": 4_021,
-        "会社総コスト": 84_021,
+        "手取り概算": 68_017,
+        "会社負担合計": 12_299,
+        "会社総コスト": 92_299,
     },
     100_000: {
-        "標準報酬月額": 98_000,
+        "健康保険 標準報酬月額": 98_000,
+        "厚生年金 標準報酬月額": 98_000,
         "健康保険(本人)": 4_826,
         "厚生年金(本人)": 8_967,
+        "子ども・子育て支援金(本人)": 113,
         "源泉所得税": 0,
-        "手取り概算": 86_207,
-        "会社負担合計": 14_371,
-        "会社総コスト": 114_371,
+        "手取り概算": 86_094,
+        "会社負担合計": 14_258,
+        "会社総コスト": 114_258,
     },
     150_000: {
-        "標準報酬月額": 150_000,
-        "健康保険(本人)": 7_388,
+        "健康保険 標準報酬月額": 150_000,
+        "厚生年金 標準報酬月額": 150_000,
+        "健康保険(本人)": 7_387,
         "厚生年金(本人)": 13_725,
+        "子ども・子育て支援金(本人)": 172,
         "源泉所得税": 1_300,
-        "手取り概算": 127_587,
-        "会社負担合計": 21_998,
-        "会社総コスト": 171_998,
+        "手取り概算": 127_416,
+        "会社負担合計": 21_826,
+        "会社総コスト": 171_826,
     },
 }
 
-for salary, expected in EXPECTED.items():
-    actual = simulate(salary, 39)
-    for key, expected_value in expected.items():
-        assert actual[key] == expected_value, (
-            f"{salary:,}円 / {key}: expected={expected_value}, actual={actual[key]}"
-        )
 
-print("OK: Google Sheets版の基準値（39歳・8万/10万/15万円）と一致しました。")
+def test_default_cases():
+    for salary, expected in EXPECTED_39.items():
+        actual = simulate(salary, 39)
+        for key, value in expected.items():
+            assert actual[key] == value, (
+                f"{salary=} {key}: expected {value}, got {actual[key]}"
+            )
+
+
+def test_age_70_has_no_regular_pension_premium():
+    actual = simulate(150_000, 70)
+    assert actual["厚生年金 標準報酬月額"] == 0
+    assert actual["厚生年金(本人)"] == 0
+    assert actual["厚生年金(会社)"] == 0
+    assert actual["子ども・子育て拠出金(会社)"] == 0
+
+
+if __name__ == "__main__":
+    test_default_cases()
+    test_age_70_has_no_regular_pension_premium()
+    print("OK: all tests passed")
