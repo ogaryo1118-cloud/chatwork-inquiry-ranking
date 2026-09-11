@@ -1,23 +1,54 @@
-"""役員報酬比較シミュレーター（東京都・令和8年度・扶養0人）計算ロジック。"""
+"""役員報酬比較シミュレーター（東京都・令和8年度・扶養0人）計算ロジック。
 
+前提:
+- 協会けんぽ東京支部
+- 令和8年4月分以降（子ども・子育て支援金0.23%適用後）
+- 源泉所得税: 甲欄・扶養0人
+- 給与から本人負担分を控除する場合の端数処理
+- 会社負担額は1名分の概算（実際の納入告知額は事業所全体で合算後に端数処理）
+"""
+
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from pathlib import Path
+
 import pandas as pd
 
 BASE_DIR = Path(__file__).resolve().parent
 
 df_standard = pd.read_csv(BASE_DIR / "master_standard_remuneration.csv")
-df_rates = pd.read_csv(BASE_DIR / "master_rates.csv").set_index("item")
+df_rates = pd.read_csv(
+    BASE_DIR / "master_rates.csv",
+    dtype={"rate": "string"},
+).set_index("item")
 df_tax_low = pd.read_csv(BASE_DIR / "master_tax_table_low.csv")
 
-RATE_KENPO = float(df_rates.loc["health_insurance", "rate"])
-RATE_KENPO_KAIGO = float(df_rates.loc["health_insurance_with_kaigo", "rate"])
-RATE_KOSEI_NENKIN = float(df_rates.loc["kosei_nenkin", "rate"])
-RATE_SHIENKIN = float(df_rates.loc["kodomo_kosodate_shienkin", "rate"])
-RATE_KYOSHUTSUKIN = float(df_rates.loc["kodomo_kosodate_kyoshutsukin", "rate"])
+RATE_KENPO = Decimal(str(df_rates.loc["health_insurance", "rate"]))
+RATE_KENPO_KAIGO = Decimal(str(df_rates.loc["health_insurance_with_kaigo", "rate"]))
+RATE_KOSEI_NENKIN = Decimal(str(df_rates.loc["kosei_nenkin", "rate"]))
+RATE_SHIENKIN = Decimal(str(df_rates.loc["kodomo_kosodate_shienkin", "rate"]))
+RATE_KYOSHUTSUKIN = Decimal(str(df_rates.loc["kodomo_kosodate_kyoshutsukin", "rate"]))
+
+
+def _employee_share(total_premium: Decimal) -> int:
+    """給与天引き時の被保険者負担分。
+
+    被保険者負担分の円未満が50銭以下なら切捨て、50銭超なら切上げ。
+    """
+    half = total_premium / Decimal("2")
+    floor_value = half.to_integral_value(rounding=ROUND_FLOOR)
+    fraction = half - floor_value
+    if fraction <= Decimal("0.5"):
+        return int(floor_value)
+    return int(half.to_integral_value(rounding=ROUND_CEILING))
+
+
+def _single_person_billed_total(total_premium: Decimal) -> int:
+    """1名分として納付額を概算するため、全額の円未満を切り捨てる。"""
+    return int(total_premium.to_integral_value(rounding=ROUND_FLOOR))
 
 
 def get_standard_remuneration(salary: float) -> dict:
-    """報酬月額から健康保険等級・厚生年金等級・標準報酬月額を返す。"""
+    """報酬月額から健康保険・厚生年金の標準報酬月額を返す。"""
     if salary < 0:
         raise ValueError("役員報酬は0円以上で入力してください。")
 
@@ -31,12 +62,9 @@ def get_standard_remuneration(salary: float) -> dict:
     row = row.iloc[0]
     return {
         "kenpo_grade": int(row["kenpo_grade"]),
-        "kosei_nenkin_grade": (
-            None
-            if pd.isna(row["kosei_nenkin_grade"])
-            else int(row["kosei_nenkin_grade"])
-        ),
-        "standard_remuneration": int(row["standard_remuneration"]),
+        "kosei_nenkin_grade": int(row["kosei_nenkin_grade"]),
+        "health_standard_remuneration": int(row["standard_remuneration"]),
+        "pension_standard_remuneration": int(row["pension_standard_remuneration"]),
     }
 
 
@@ -79,59 +107,88 @@ def get_withholding_tax(salary_after_social_insurance: float) -> int:
 
 def simulate(salary: float, age: int) -> dict:
     """役員報酬1案について本人負担・手取り・会社負担を試算する。"""
-    if not 20 <= int(age) <= 80:
-        raise ValueError("年齢は20〜80歳で入力してください。")
+    age = int(age)
+    if not 20 <= age <= 74:
+        raise ValueError("本ツールの年齢対応範囲は20〜74歳です。75歳以上は後期高齢者医療制度となるため対象外です。")
 
-    salary = float(salary)
+    salary = int(salary)
     std = get_standard_remuneration(salary)
-    standard_remuneration = std["standard_remuneration"]
 
-    is_kaigo = 40 <= int(age) <= 64
+    health_std = std["health_standard_remuneration"]
+    # 通常の厚生年金保険は70歳未満。70〜74歳は本PoCでは高齢任意加入を考慮しない。
+    pension_std = std["pension_standard_remuneration"] if age < 70 else 0
+
+    is_kaigo = 40 <= age <= 64
     kenpo_rate = RATE_KENPO_KAIGO if is_kaigo else RATE_KENPO
 
-    kenpo_total = round(standard_remuneration * kenpo_rate, 1)
-    kenpo_half = round(kenpo_total / 2)
+    health_total = Decimal(health_std) * kenpo_rate
+    health_employee = _employee_share(health_total)
+    health_company = _single_person_billed_total(health_total) - health_employee
 
-    if std["kosei_nenkin_grade"] is not None:
-        nenkin_total = round(standard_remuneration * RATE_KOSEI_NENKIN, 1)
-        nenkin_half = round(nenkin_total / 2)
-        kyoshutsukin = round(standard_remuneration * RATE_KYOSHUTSUKIN, 1)
+    support_total = Decimal(health_std) * RATE_SHIENKIN
+    support_employee = _employee_share(support_total)
+    support_company = _single_person_billed_total(support_total) - support_employee
+
+    if pension_std > 0:
+        pension_total = Decimal(pension_std) * RATE_KOSEI_NENKIN
+        pension_employee = _employee_share(pension_total)
+        pension_company = _single_person_billed_total(pension_total) - pension_employee
+        child_contribution_company = _single_person_billed_total(
+            Decimal(pension_std) * RATE_KYOSHUTSUKIN
+        )
     else:
-        nenkin_half = 0
-        kyoshutsukin = 0
+        pension_employee = 0
+        pension_company = 0
+        child_contribution_company = 0
 
-    shienkin = round(standard_remuneration * RATE_SHIENKIN, 1)
-
-    salary_after_social = salary - kenpo_half - nenkin_half
+    salary_after_social = (
+        salary
+        - health_employee
+        - pension_employee
+        - support_employee
+    )
     withholding_tax = get_withholding_tax(salary_after_social)
 
-    honnin_futan = kenpo_half + nenkin_half + withholding_tax
-    tedori = salary - honnin_futan
+    employee_total = (
+        health_employee
+        + pension_employee
+        + support_employee
+        + withholding_tax
+    )
+    take_home = salary - employee_total
 
-    kaisha_futan = kenpo_half + nenkin_half + kyoshutsukin + shienkin
-    kaisha_total_cost = salary + kaisha_futan
+    company_total = (
+        health_company
+        + pension_company
+        + child_contribution_company
+        + support_company
+    )
+    company_total_cost = salary + company_total
 
     return {
-        "役員報酬": int(salary),
-        "標準報酬月額": standard_remuneration,
-        "健康保険(本人)": int(kenpo_half),
-        "厚生年金(本人)": int(nenkin_half),
-        "源泉所得税": int(withholding_tax),
-        "本人負担合計": int(honnin_futan),
-        "手取り概算": int(tedori),
-        "健康保険(会社)": int(kenpo_half),
-        "厚生年金(会社)": int(nenkin_half),
-        "子育て拠出金(会社)": int(kyoshutsukin),
-        "子育て支援金(会社)": int(shienkin),
-        "会社負担合計": int(kaisha_futan),
-        "会社総コスト": int(kaisha_total_cost),
+        "役員報酬": salary,
+        "健康保険 標準報酬月額": health_std,
+        "厚生年金 標準報酬月額": pension_std,
+        "健康保険(本人)": health_employee,
+        "厚生年金(本人)": pension_employee,
+        "子ども・子育て支援金(本人)": support_employee,
+        "社会保険料等控除後給与": salary_after_social,
+        "源泉所得税": withholding_tax,
+        "本人負担合計": employee_total,
+        "手取り概算": take_home,
+        "健康保険(会社)": health_company,
+        "厚生年金(会社)": pension_company,
+        "子ども・子育て拠出金(会社)": child_contribution_company,
+        "子ども・子育て支援金(会社)": support_company,
+        "会社負担合計": company_total,
+        "会社総コスト": company_total_cost,
         "介護保険該当": "○" if is_kaigo else "-",
     }
 
 
 def compare(salaries: list, age: int) -> pd.DataFrame:
     """複数の役員報酬案を横並びの比較表にする。"""
-    valid_salaries = [float(s) for s in salaries if float(s) > 0]
+    valid_salaries = [int(s) for s in salaries if int(s) > 0]
     if not valid_salaries:
         raise ValueError("1つ以上、役員報酬額を入力してください。")
 
